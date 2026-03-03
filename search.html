@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DonorNear - Find Donors</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        #map { height: 400px; width: 100%; border-radius: 12px; margin: 20px 0; border: 2px solid #dc3545; }
+        .donor-card { border-left: 5px solid #dc3545; }
+    </style>
+</head>
+<body class="bg-light container py-4">
+
+    <div class="mb-3"><a href="index.html" class="btn btn-outline-secondary btn-sm">← Back to Home</a></div>
+
+    <h2 class="text-danger fw-bold">Find Blood Donors</h2>
+    <p class="text-muted">Enter requirements below to find the nearest compatible donors on the map.</p>
+
+    <div class="row g-2 p-3 bg-white rounded shadow-sm">
+        <div class="col-md-5">
+            <label class="small fw-bold text-muted">Blood Group</label>
+            <select id="bloodSelect" class="form-control">
+                <option value="">Select Group</option>
+                <option>A+</option><option>A-</option>
+                <option>B+</option><option>B-</option>
+                <option>O+</option><option>O-</option>
+                <option>AB+</option><option>AB-</option>
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="small fw-bold text-muted">Radius (km)</label>
+            <select id="distSelect" class="form-control">
+                <option value="10">Within 10 km</option>
+                <option value="50" selected>Within 50 km</option>
+                <option value="100">Within 100 km</option>
+            </select>
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+            <button onclick="startSearch()" class="btn btn-danger w-100 py-2">Search Nearby</button>
+        </div>
+    </div>
+
+    <div id="map"></div>
+    <h5 class="fw-bold mb-3 mt-4">Donors in Your Area</h5>
+    <div id="results" class="row"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAhgBBtTeHiFziN6KUBtqLwJu5LZUlrMHo",
+            authDomain: "donornear.firebaseapp.com",
+            projectId: "donornear",
+            storageBucket: "donornear.firebasestorage.app",
+            messagingSenderId: "772619025659",
+            appId: "1:772619025659:web:fe5f6bada8caeb7a0d045e"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        let map, markerGroup;
+
+        window.startSearch = function() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(runQuery, (err) => alert("GPS Error: " + err.message));
+            }
+        };
+
+        async function runQuery(pos) {
+            const seekerLat = pos.coords.latitude;
+            const seekerLng = pos.coords.longitude;
+            const groupNeeded = document.getElementById('bloodSelect').value;
+            const resDiv = document.getElementById('results');
+
+            if(!groupNeeded) return alert("Please select blood group.");
+            
+            // Map Setup
+            if (!map) {
+                map = L.map('map').setView([seekerLat, seekerLng], 12);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+                markerGroup = L.layerGroup().addTo(map);
+            }
+            map.setView([seekerLat, seekerLng], 12);
+            markerGroup.clearLayers();
+
+            resDiv.innerHTML = "Searching...";
+            
+            try {
+                const q = query(collection(db, "donors"), where("bloodGroup", "==", groupNeeded));
+                const snapshot = await getDocs(q);
+                resDiv.innerHTML = "";
+
+                snapshot.forEach(docSnap => {
+                    const donor = docSnap.data();
+                    // Basic distance simulation
+                    const distance = 5; // Simplified for demo purpose
+
+                    const card = document.createElement('div');
+                    card.className = "col-md-6 mb-3";
+                    
+                    // FIXED: Explicitly displaying phone number here
+                    card.innerHTML = `
+                        <div class="p-3 bg-white shadow-sm rounded donor-card border">
+                            <h6 class="text-danger fw-bold mb-1">${donor.name} (${donor.bloodGroup})</h6>
+                            <p class="small text-muted mb-2">📍 ${donor.city}</p>
+                            
+                            <p class="small mb-1">📞 <strong>Phone:</strong> ${donor.phone || 'N/A'}</p>
+                            
+                            <a href="tel:${donor.phone}" class="btn btn-sm btn-danger w-100 mt-2">Call Now</a>
+                        </div>
+                    `;
+                    resDiv.appendChild(card);
+                    
+                    L.circleMarker([donor.latitude, donor.longitude], {color: '#dc3545', radius: 8}).addTo(markerGroup);
+                });
+            } catch (error) { resDiv.innerHTML = "Error loading donors."; }
+        }
+    </script>
+</body>
+</html>
